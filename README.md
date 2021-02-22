@@ -1,0 +1,1 @@
+# edgedns-registrar-coordinator
