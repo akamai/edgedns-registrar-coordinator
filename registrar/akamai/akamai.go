@@ -14,19 +14,18 @@
 package internal
 
 import (
-	log "github.com/apex/log"
 	"github.com/akamai/edgedns-registrar-coordinator/registrar"
+	log "github.com/apex/log"
 
+	"context"
+	"fmt"
 	dns "github.com/akamai/AkamaiOPEN-edgegrid-golang/configdns-v2"
 	edgegrid "github.com/akamai/AkamaiOPEN-edgegrid-golang/edgegrid"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"context"
 	"os"
 	"strconv"
 	"strings"
-	"time"
-	"fmt"
 )
 
 const ()
@@ -47,8 +46,6 @@ type AkamaiRegistrar struct {
 	registrar.BaseRegistrarProvider
 	akamaiConfig *AkamaiConfig
 	config       *edgegrid.Config
-	dryRun       bool
-	once         bool
 	// Defines client. Allows for mocking.
 	client AkamaiDNSService
 }
@@ -63,53 +60,23 @@ type AkamaiConfig struct {
 	AkamaiAccessToken   string `yaml:"akamai_access_token"`
 	AkamaiClientToken   string `yaml:"akamai_client_token"`
 	AkamaiClientSecret  string `yaml:"akamai_client_secret"`
-	Interval            time.Duration
-	MaxBody             int
-	AccountKey          string
-	DryRun              bool
-	Once                bool
+	MaxBody             int    `yaml:"akamai_max_body"`
+	AccountKey          string `yaml:"akamai_account_key"`
 }
 
 // NewAkamaiProvider initializes a new Akamai DNS based Provider.
-func NewAkamaiRegistrar(ctx context.Context, akamaiConfig AkamaiConfig, akaService AkamaiDNSService) (*AkamaiRegistrar, error) {
+func NewAkamaiRegistrar(ctx context.Context, akaConfig AkamaiConfig, akaService AkamaiDNSService) (*AkamaiRegistrar, error) {
 
-	var akaConfig *AkamaiConfig
 	var err error
 
 	log := ctx.Value("appLog").(*log.Entry)
 	// Get file config and parse
-	if akamaiConfig.AkamaiConfigPath != "" {
-		akaConfig, err = loadConfig(log, akamaiConfig.AkamaiConfigPath)
-		if err != nil {
-			return nil, err
-		}
+	if akaConfig.AkamaiConfigPath == "" {
+		return nil, fmt.Errorf("Akamai Registrar requires a configuration file")
 	}
-	if akaConfig != nil {
-		// Command line over rides ...
-		if len(akamaiConfig.AkamaiContracts) == 0 {
-			akamaiConfig.AkamaiContracts = akaConfig.AkamaiContracts
-		}
-		if akamaiConfig.AkamaiNameFilter == "" {
-			akamaiConfig.AkamaiNameFilter = akaConfig.AkamaiNameFilter
-		}
-		if akamaiConfig.AkamaiEdgercPath == "" {
-			akamaiConfig.AkamaiEdgercPath = akaConfig.AkamaiEdgercPath
-		}
-		if akamaiConfig.AkamaiEdgercSection == "" {
-			akamaiConfig.AkamaiEdgercSection = akaConfig.AkamaiEdgercSection
-		}
-		if akamaiConfig.AkamaiHost == "" {
-			akamaiConfig.AkamaiHost = akaConfig.AkamaiHost
-		}
-		if akamaiConfig.AkamaiAccessToken == "" {
-			akamaiConfig.AkamaiAccessToken = akaConfig.AkamaiAccessToken
-		}
-		if akamaiConfig.AkamaiClientToken == "" {
-			akamaiConfig.AkamaiClientToken = akaConfig.AkamaiClientToken
-		}
-		if akamaiConfig.AkamaiClientSecret == "" {
-			akamaiConfig.AkamaiClientSecret = akaConfig.AkamaiClientSecret
-		}
+	akamaiConfig, err := loadConfig(log, akaConfig.AkamaiConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("Akamai Registrar. Invalid configuration file")
 	}
 	// Process creds. Could be on cmd line, config file
 	var edgeGridConfig edgegrid.Config
@@ -140,7 +107,13 @@ func NewAkamaiRegistrar(ctx context.Context, akamaiConfig AkamaiConfig, akaServi
 			MaxBody:      131072, // same default val as used by Edgegrid
 			Debug:        false,
 		}
-		// Check for edgegrid overrides
+		if akamaiConfig.MaxBody != 0 {
+			edgeGridConfig.MaxBody = akamaiConfig.MaxBody
+		}
+		if akamaiConfig.AccountKey != "" {
+			edgeGridConfig.AccountKey = akamaiConfig.AccountKey
+		}
+		// Check for edgegrid environment overrides
 		if envval, ok := os.LookupEnv("AKAMAI_MAX_BODY"); ok {
 			if i, err := strconv.Atoi(envval); err == nil {
 				edgeGridConfig.MaxBody = i
@@ -161,9 +134,7 @@ func NewAkamaiRegistrar(ctx context.Context, akamaiConfig AkamaiConfig, akaServi
 
 	provider := &AkamaiRegistrar{
 		config:       &edgeGridConfig,
-		akamaiConfig: &akamaiConfig,
-		dryRun:       akamaiConfig.DryRun,
-		once:         akamaiConfig.Once,
+		akamaiConfig: akamaiConfig,
 	}
 	if akaService != nil {
 		log.Debugf("Using STUB")
@@ -178,10 +149,22 @@ func NewAkamaiRegistrar(ctx context.Context, akamaiConfig AkamaiConfig, akaServi
 	return provider, nil
 }
 
+func resetDNSConfig(orig edgegrid.Config) {
+
+	dns.Config = orig
+
+}
+
 func (a *AkamaiRegistrar) GetDomains(ctx context.Context) ([]string, error) {
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetDomains")
+
+	// both edgedns and this registrar using dns. need to temp swap config...
+	existConfig := dns.Config
+	defer resetDNSConfig(existConfig)
+	dns.Config = *a.config
+
 	queryArgs := dns.ZoneListQueryArgs{
 		Types:       "PRIMARY",
 		SortBy:      "zone",
@@ -211,6 +194,12 @@ func (a *AkamaiRegistrar) GetDomain(ctx context.Context, domain string) (*regist
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetDomain")
+
+	// both edgedns and this registrar using dns. need to temp swap config...
+	existConfig := dns.Config
+	defer resetDNSConfig(existConfig)
+	dns.Config = *a.config
+
 	zone, err := dns.GetZone(domain)
 	if err != nil {
 		return nil, err
@@ -230,6 +219,12 @@ func (a *AkamaiRegistrar) GetTsigKey(ctx context.Context, domain string) (tsigKe
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetTsigKey")
+
+	// both edgedns and this registrar using dns. need to temp swap config...
+	existConfig := dns.Config
+	defer resetDNSConfig(existConfig)
+	dns.Config = *a.config
+
 	resp, err := dns.GetZoneKey(domain)
 
 	if err != nil {
@@ -244,6 +239,12 @@ func (a *AkamaiRegistrar) GetServeAlgorithm(ctx context.Context, domain string) 
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetServeAlgorithm")
+
+	// both edgedns and this registrar using dns. need to temp swap config...
+	existConfig := dns.Config
+	defer resetDNSConfig(existConfig)
+	dns.Config = *a.config
+
 	zone, err := dns.GetZone(domain)
 	if err != nil {
 		return "", nil
@@ -256,6 +257,12 @@ func (a *AkamaiRegistrar) GetMasterIPs(ctx context.Context) ([]string, error) {
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetMasterIPs")
+
+	// both edgedns and this registrar using dns. need to temp swap config...
+	existConfig := dns.Config
+	defer resetDNSConfig(existConfig)
+	dns.Config = *a.config
+
 	if len(a.akamaiConfig.AkamaiContracts) < 1 {
 		log.Debug("Registrar GetMasterIPs failed. No contracts")
 		return []string{}, fmt.Errorf("No contracts provided")

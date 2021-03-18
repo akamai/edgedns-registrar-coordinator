@@ -1,0 +1,16 @@
+akamai_contracts: 1-5C13O2
+
+akamai_name_filter: edgedns
+
+#akamai_edgerc_path: /home/test/.edgerc
+
+#akamai_edgerc_section: registrar
+
+akamai_host: akab-akamairegistrarh-ostexample123456.luna.akamaiapis.net
+  
+akamai_access_token: akab-akamaiaccesstoke-nexample12345678
+  
+akamai_client_token: akab-akamaiclienttoke-nexample12345678
+
+akamai_client_secret: akamaiclientsecretexampleforregistrar123456=
+

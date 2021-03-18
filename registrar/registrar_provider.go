@@ -16,6 +16,8 @@ package registrar
 import (
 	"context"
 	dns "github.com/akamai/AkamaiOPEN-edgegrid-golang/configdns-v2"
+	log "github.com/apex/log"
+	"plugin"
 )
 
 const ()
@@ -30,6 +32,8 @@ type Domain struct {
 	Masters               []string
 	TsigKey               *dns.TSIGKey
 }
+
+// Integrated Registrar
 
 type RegistrarProvider interface {
 	GetDomains(ctx context.Context) ([]string, error)
@@ -68,4 +72,35 @@ func (b BaseRegistrarProvider) GetServeAlgorithm(ctx context.Context, domain str
 func (b BaseRegistrarProvider) GetMasterIPs(ctx context.Context) (masterIps []string, err error) {
 
 	return
+}
+
+// Plugins
+
+type PluginRegistrarProvider interface {
+	NewPluginLibRegistrar()
+	GetDomains()
+	GetDomain()
+	GetTsigKey()
+	GetServeAlgorithm()
+	GetMasterIPs()
+	//GetTsigKeys() []dnsTSIGKey
+	//GetDnsSecStatus
+	//GetZoneTransferStatus
+}
+
+type PluginConfig struct {
+	PluginLibPath    string
+	PluginName       string
+	PluginConfigPath string
+	LogEntry         *log.Entry
+	Registrar        *plugin.Plugin
+}
+
+type PluginFuncArgs struct {
+	PluginArg interface{}
+}
+
+type PluginFuncResult struct {
+	PluginResult interface{}
+	PluginError  error
 }

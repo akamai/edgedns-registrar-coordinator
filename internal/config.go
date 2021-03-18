@@ -41,14 +41,6 @@ var (
 		LogFilePath:           "",
 		LogHandler:            "text",
 		LogLevel:              "info",
-		AkamaiContracts:       []string{},
-		AkamaiNameFilter:      "",
-		AkamaiHost:            "",
-		AkamaiClientToken:     "",
-		AkamaiClientSecret:    "",
-		AkamaiAccessToken:     "",
-		AkamaiEdgercPath:      "",
-		AkamaiEdgercSection:   "",
 		PluginLibPath:         "",
 	}
 )
@@ -76,16 +68,6 @@ type Config struct {
 	LogLevel    string
 	DryRun      bool
 	Once        bool
-	// Akamai “registrar”
-	AkamaiContracts    []string
-	AkamaiNameFilter   string
-	AkamaiHost         string
-	AkamaiClientToken  string
-	AkamaiClientSecret string
-	AkamaiAccessToken  string
-	// --OR--
-	AkamaiEdgercPath    string
-	AkamaiEdgercSection string
 	// Plugin Registrar
 	PluginLibPath string
 	// Add MarkMonitor ….
@@ -130,16 +112,6 @@ func (cfg *Config) ParseFlags(app *kingpin.Application, args []string) (string, 
 	app.Flag("edgegrid-edgerc-path", "optionally specify the .edgerc file path instead of individual Edgegrid keys").Default(DefaultConfig.EdgegridEdgercPath).StringVar(&cfg.EdgegridEdgercPath)
 	app.Flag("edgegrid-edgerc-section", "specify the section when specifying an .edgerc file path").Default(DefaultConfig.EdgegridEdgercSection).StringVar(&cfg.EdgegridEdgercSection)
 
-	// Akamai Registrar Provider
-	app.Flag("akamai-contract", "Contracts to use when retrieving domains").Default("").StringsVar(&cfg.AkamaiContracts)
-	app.Flag("akamai-name-filter", "Domain name string filter to use when retrieving domains").Default(DefaultConfig.AkamaiNameFilter).StringVar(&cfg.AkamaiNameFilter)
-	app.Flag("akamai-host", "When using the Akamai provider, specify the base URL").Default(DefaultConfig.AkamaiHost).StringVar(&cfg.AkamaiHost)
-	app.Flag("akamai-client-token", "When using the Akamai provider, specify the client token").Default(DefaultConfig.AkamaiClientToken).StringVar(&cfg.AkamaiClientToken)
-	app.Flag("akamai-client-secret", "When using the Akamai provider, specify the client secret").Default(DefaultConfig.AkamaiClientSecret).StringVar(&cfg.AkamaiClientSecret)
-	app.Flag("akamai-access-token", "When using the Akamai provider, specify the access token").Default(DefaultConfig.AkamaiAccessToken).StringVar(&cfg.AkamaiAccessToken)
-	app.Flag("akamai-edgerc-path", "When using the Akamai provider, optionally specify the .edgerc file path instead of individual Edgegrid keys").Default(DefaultConfig.AkamaiEdgercPath).StringVar(&cfg.AkamaiEdgercPath)
-	app.Flag("akamai-edgerc-section", "When using the Akamai provider, specify the section when specifying an .edgerc file path").Default(DefaultConfig.AkamaiEdgercSection).StringVar(&cfg.AkamaiEdgercSection)
-
 	// Plugin Registrat Orpovider
 	app.Flag("plugin-filepath", "plugin provider library location path.").Default(DefaultConfig.PluginLibPath).StringVar(&cfg.PluginLibPath)
 
@@ -181,22 +153,6 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.EdgegridAccessToken == "" && cfg.EdgegridEdgercPath == "" {
 		return fmt.Errorf("no Edgegrid access token specified")
-	}
-
-	// Akamai provider specific validations
-	if cfg.Registrar == "akamai" {
-		if cfg.AkamaiHost == "" && cfg.AkamaiEdgercPath == "" {
-			return fmt.Errorf("no Akamai host specified")
-		}
-		if cfg.AkamaiClientToken == "" && cfg.AkamaiEdgercPath == "" {
-			return fmt.Errorf("no Akamai client token specified")
-		}
-		if cfg.AkamaiClientSecret == "" && cfg.AkamaiEdgercPath == "" {
-			return fmt.Errorf("no Akamai client secret specified")
-		}
-		if cfg.AkamaiAccessToken == "" && cfg.AkamaiEdgercPath == "" {
-			return fmt.Errorf("no Akamai access token specified")
-		}
 	}
 
 	// Plugin Registrar

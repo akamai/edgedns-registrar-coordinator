@@ -17,13 +17,13 @@ import (
 	"github.com/akamai/edgedns-registrar-coordinator/internal"
 	"github.com/akamai/edgedns-registrar-coordinator/registrar"
 	akamai "github.com/akamai/edgedns-registrar-coordinator/registrar/akamai"
+	plugin "github.com/akamai/edgedns-registrar-coordinator/registrar/plugin"
 	log "github.com/apex/log"
 	"github.com/apex/log/handlers/cli"
 	"github.com/apex/log/handlers/discard"
 	"github.com/apex/log/handlers/json"
 	"github.com/apex/log/handlers/text"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
-	//"github.com/akamai/edgedns-registrar-coordinator/registrar/plugin"
 
 	"context"
 	"fmt"
@@ -135,31 +135,23 @@ func main() {
 		r, err = akamai.NewAkamaiRegistrar(
 			ctx,
 			akamai.AkamaiConfig{
-				AkamaiContracts:     strings.Join(cfg.AkamaiContracts, ","),
-				AkamaiConfigPath:    cfg.RegistrarConfigPath,
-				Interval:            cfg.Interval,
-				AkamaiNameFilter:    cfg.AkamaiNameFilter,
-				AkamaiHost:          cfg.AkamaiHost,
-				AkamaiClientToken:   cfg.AkamaiClientToken,
-				AkamaiClientSecret:  cfg.AkamaiClientSecret,
-				AkamaiAccessToken:   cfg.AkamaiAccessToken,
-				AkamaiEdgercPath:    cfg.AkamaiEdgercPath,
-				AkamaiEdgercSection: cfg.AkamaiEdgercSection,
-				Once:                cfg.Once,
-				DryRun:              cfg.DryRun,
+				AkamaiConfigPath: cfg.RegistrarConfigPath,
 			},
 			nil,
 		)
-		/*
-		   	case "plugin":
-		   		r, err = akamai.NewPluginRegistrar(
-		                           plugin.PluginConfig{
-		                                   PluginLibPath   cfg.PluginLibPath,
-		                                   Once:           cfg.Once,
-		                                   DryRun:         cfg.DryRun,
-		                           },
-		                   )
-		*/
+
+	case "plugin":
+		appLog.Debugf("PluginLibPath: %s", cfg.PluginLibPath)
+		appLog.Debugf("PluginConfigPath: %s", cfg.RegistrarConfigPath)
+		r, err = plugin.NewPluginRegistrar(
+			ctx,
+			registrar.PluginConfig{
+				PluginLibPath:    cfg.PluginLibPath,
+				PluginConfigPath: cfg.RegistrarConfigPath,
+				LogEntry:         appLog,
+			},
+		)
+
 	default:
 		err = fmt.Errorf("Invalid command")
 	}

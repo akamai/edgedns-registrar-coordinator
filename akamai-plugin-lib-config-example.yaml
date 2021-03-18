@@ -1,0 +1,20 @@
+akamai_contracts: 1-ABC123
+
+akamai_name_filter: edgedns
+
+#akamai_edgerc_path: /home/test/.edgerc
+
+#akamai_edgerc_section: registrar
+
+akamai_host: akab-abcdefghijklmnopqrstuvwxyz1234567.luna.akamaiapis.net
+  
+akamai_access_token: akab-exampleaccesstok-en1234567890abcd
+  
+akamai_client_token: akab-exampleaccesstok-en12345678901234
+
+akamai_client_secret: exampleakamaiclientsecret1234567890abcdefgh=
+
+#akamai_client_maxbody:
+  
+#akamai_client_account_key
+
