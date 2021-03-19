@@ -35,6 +35,8 @@ import (
 const ()
 
 var (
+	// Application version
+	VERSION = "0.1.0"
 	edgeDNSHandler *internal.EdgeDNSHandler
 	app            *kingpin.Application
 	// monitor sub command
@@ -159,12 +161,9 @@ func main() {
 		appLog.Errorf("Failed to create registrar. Error: %s", err.Error())
 		app.Fatalf("Failed to create registrar. Error: %s", err.Error())
 	}
-	//log.AddFlags(kingpin.CommandLine)
-	/*
-	   app.Version(version.Print("edgedns_registrar_coordinator"))
-	   log.Info("Starting Edge DNS Registrar Coordinator", version.Info())
-	   log.Info("Build context", version.BuildContext())
-	*/
+
+	app.Version((VERSION))
+	log.Infof("Starting Edge DNS Registrar Coordinator version %s", VERSION)
 
 	// Init EdgeDNSHandler
 	edgeDNSHandler, err = internal.InitEdgeDNSHandler(ctx, cfg, nil)
