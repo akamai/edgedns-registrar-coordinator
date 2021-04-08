@@ -36,7 +36,7 @@ const ()
 
 var (
 	// Application version
-	VERSION = "0.1.0"
+	VERSION        = "0.1.0"
 	edgeDNSHandler *internal.EdgeDNSHandler
 	app            *kingpin.Application
 	// monitor sub command
@@ -46,6 +46,7 @@ var (
 func main() {
 
 	var err error
+	cmderr := make(chan string)
 
 	// create a context
 	ctx := context.Background()
@@ -54,18 +55,22 @@ func main() {
 	ctx, cancel := context.WithCancel(ctx)
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
+
 	defer func() {
 		signal.Stop(signalChan)
 		cancel()
 	}()
+
 	go func() {
 		select {
 		case <-signalChan:
+			fmt.Println("SIGNAL")
+			cmderr <- "Interrupt signal received"
 			cancel()
 		case <-ctx.Done():
 		}
 		<-signalChan
-		os.Exit(2)
+		os.Exit(0)
 	}()
 
 	cfg := internal.NewConfig()
@@ -112,6 +117,17 @@ func main() {
 
 	case "discard":
 		log.SetHandler(discard.Default)
+
+	/*
+		case "syslog":
+	                levelMap := map[string]string{
+	                        "debug": ,
+				"info": ,
+				"warning": ,
+				"error": ,
+				"fatal": ,
+	                }
+	*/
 
 	default:
 		log.Warn("Log handler invalid. Using default text handler")
@@ -172,9 +188,6 @@ func main() {
 		app.Fatalf("Failed to initialize Edge DNS Handler. Error: %s", err.Error())
 	}
 
-	// Pass back error message ...
-	cmderr := make(chan string)
-
 	switch cmd {
 	case monitor.FullCommand():
 		appLog.Info("Processing monitor command")
@@ -184,10 +197,14 @@ func main() {
 		appLog.Errorf("Invalid commandline [%s]", strings.Join(os.Args, " "))
 		app.FatalUsage("Invalid commandline [%s]", strings.Join(os.Args, " "))
 	}
-
 	errmsg := <-cmderr
 	if errmsg != "" {
-		appLog.Errorf("Command action failed. Error: %s", errmsg)
-		app.Fatalf("Command action failed. Error: %s", errmsg)
+		if strings.Contains(errmsg, "Interrupt") {
+			appLog.Infof("Command action terminated. %s", errmsg)
+			fmt.Println("Command action terminated. ", errmsg)
+		} else {
+			appLog.Errorf("Command action terminated. %s", errmsg)
+			app.Fatalf("Command action terminated. %s", errmsg)
+		}
 	}
 }

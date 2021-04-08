@@ -21,6 +21,7 @@ import (
 	"context"
 	"strconv"
 	"time"
+	//"fmt"
 )
 
 var (
@@ -32,49 +33,80 @@ func Monitor(ctx context.Context, err chan string, regname string, reg registrar
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Monitor")
+
+	for {
+		log.Debug("Processing Monitor interval")
+		if m := monitorProc(ctx, regname, reg, edge, interval, dryrun, once); m != nil {
+			err <- *m
+			break
+		}
+	}
+
+	return
+}
+
+func monitorProc(ctx context.Context, regname string, reg registrar.RegistrarProvider, edge *EdgeDNSHandler, interval time.Duration, dryrun bool, once bool) *string {
+
+	var errmsg string
+
+	log := ctx.Value("appLog").(*log.Entry)
+
 	queryArgs := dns.ZoneListQueryArgs{
 		ContractIds: edge.Contract,
 		ShowAll:     true,
 		SortBy:      "zone",
 		Types:       "SECONDARY",
 	}
-	log.Debugf("Edge CONTRACT: %s", edge.Contract)
-	for {
-		nextLoop := time.Now().Add(interval)
-		edgeZones, edgeErr := edge.GetZoneNames(ctx, queryArgs, []string{"LOCKED"})
-		registrarDomains, regErr := reg.GetDomains(ctx) // Up to registrar to decide how to filter
+	log.Debugf("Edge Contract: %s", edge.Contract)
 
-		if edgeErr != nil {
-			log.Errorf("Monitor. Failed to read EdgeDNS Secondary zones. Error: %s", edgeErr.Error())
-		} else if regErr != nil {
-			log.Errorf("Monitor. Failed to read registrar primary zones. Error: %s", regErr.Error())
-		} else {
-			log.Debugf("Monitor. Retrieved Edge DNS zones: %v", edgeZones)
-			log.Debugf("Monitor. Retrieved Registrar zones: %v", registrarDomains)
-			// process
-			newZones, removedZones := diffZoneLists(ctx, regname, edgeZones, registrarDomains)
-			err := addSecondaryZones(ctx, edge, reg, newZones, dryrun)
-			if err != nil {
-				log.Errorf("Monitor. Failed to add secondary zones. Error: %s", err.Error())
-			}
-			removeSecondaryZones(ctx, edge, removedZones, dryrun)
-			if err != nil {
-				log.Errorf("Monitor. Failed to remove secondary zones. Error: %s", err.Error())
-			}
+	nextLoop := time.Now().Add(interval)
+	edgeZones, edgeErr := edge.client.GetZoneNames(ctx, queryArgs, []string{"LOCKED"})
+	registrarDomains, regErr := reg.GetDomains(ctx) // Up to registrar to decide how to filter
 
+	if edgeErr != nil {
+		log.Errorf("Monitor. Failed to read EdgeDNS Secondary zones. Error: %s", edgeErr.Error())
+		if edge.FailOnError {
+			errmsg = "Monitor. Failed to read EdgeDNS Secondary zones."
+			return &errmsg
 		}
-		if once {
-			log.Debug("Monitor executed once. Exiting")
-			break
+	} else if regErr != nil {
+		log.Errorf("Monitor. Failed to read registrar primary zones. Error: %s", regErr.Error())
+		if edge.FailOnError {
+			errmsg = "Monitor. Failed to read registrar primary zones."
+			return &errmsg
 		}
-		loopEnd := time.Now()
-		if nextLoop.After(loopEnd) {
-			time.Sleep(nextLoop.Sub(loopEnd))
+	} else {
+		log.Debugf("Monitor. Retrieved Edge DNS zones: %v", edgeZones)
+		log.Debugf("Monitor. Retrieved Registrar zones: %v", registrarDomains)
+		// process
+		newZones, removedZones := diffZoneLists(ctx, regname, edgeZones, registrarDomains)
+		aerr := addSecondaryZones(ctx, edge, reg, newZones, dryrun)
+		if aerr != nil {
+			log.Errorf("Monitor. Failed to add secondary zones. Error: %s", aerr.Error())
+			if edge.FailOnError {
+				errmsg = "Monitor. Failed to add Secondary zones."
+				return &errmsg
+			}
+		}
+		derr := removeSecondaryZones(ctx, edge, removedZones, dryrun)
+		if derr != nil {
+			log.Errorf("Monitor. Failed to remove secondary zones. Error: %s", derr.Error())
+			if edge.FailOnError {
+				errmsg = "Monitor. Failed to remove secondary zones."
+				return &errmsg
+			}
 		}
 	}
+	if once {
+		log.Debug("Monitor executed once. Exiting")
+		return &errmsg
+	}
+	loopEnd := time.Now()
+	if nextLoop.After(loopEnd) {
+		time.Sleep(nextLoop.Sub(loopEnd))
+	}
 
-	err <- ""
-
+	return nil
 }
 
 func diffZoneLists(ctx context.Context, regname string, edgeZones, registrarDomains []string) (newZones []string, removedZones []string) {
@@ -92,9 +124,11 @@ func diffZoneLists(ctx context.Context, regname string, edgeZones, registrarDoma
 	reghash := make(map[string]bool)
 
 	for _, e := range edgeZones {
+		log.Debugf("Processing Edge zone: %s", e)
 		edgehash[e] = true
 	}
 	for _, e := range registrarDomains {
+		log.Debugf("Processing Registrar domain: %s", e)
 		reghash[e] = true
 		if _, ok := edgehash[e]; !ok {
 			// not there. new
@@ -103,6 +137,7 @@ func diffZoneLists(ctx context.Context, regname string, edgeZones, registrarDoma
 		}
 	}
 	for d, _ := range lastTally {
+		log.Debugf("Processing last tally: %s", d)
 		if _, ok := reghash[d]; !ok {
 			if _, ok := edgehash[d]; ok {
 				log.Debugf("Zone to delete: %s", d)
@@ -126,7 +161,7 @@ func addSecondaryZones(ctx context.Context, edge *EdgeDNSHandler, reg registrar.
 	}
 	masters, err := reg.GetMasterIPs(ctx)
 	if err != nil {
-		log.Warnf("Unable to retrieve master Ips. Error: %s", err.Error())
+		log.Errorf("Unable to retrieve master Ips. Error: %s", err.Error())
 		return err
 	}
 	// Create **Seconday** Zones one at a time ...
@@ -155,9 +190,12 @@ func addSecondaryZones(ctx context.Context, edge *EdgeDNSHandler, reg registrar.
 			log.Debugf("Secondary zone: %v", zone)
 			continue
 		}
-		err := edge.CreateZone(ctx, zone, zonequerystring)
+		err := edge.client.CreateZone(ctx, zone, zonequerystring)
 		if err != nil {
 			log.Errorf("Create zone error. %s", err.Error())
+			if edge.FailOnError {
+				return err
+			}
 		}
 	}
 
@@ -178,7 +216,7 @@ func removeSecondaryZones(ctx context.Context, edge *EdgeDNSHandler, removedZone
 	}
 
 	zonelist := &dns.ZoneNameListResponse{Zones: removedZones}
-	_, err := edge.DeleteBulkZones(ctx, zonelist) // (*dns.BulkZonesResponse, error)
+	_, err := edge.client.DeleteBulkZones(ctx, zonelist) // (*dns.BulkZonesResponse, error)
 	if err != nil {
 		log.Errorf("Delete zones error. %s", err.Error())
 		return err
