@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package internal
+package akamai
 
 import (
 	"github.com/akamai/edgedns-registrar-coordinator/registrar"
@@ -41,13 +41,24 @@ type AkamaiDNSService interface {
 	GetMasterIPs(ctx context.Context) ([]string, error)
 }
 
+type OpenEdgegridDNSService interface {
+	ListZones(queryArgs dns.ZoneListQueryArgs) (*dns.ZoneListResponse, error)
+	GetZone(domain string) (*dns.ZoneResponse, error)
+	GetZoneKey(domain string) (*dns.TSIGKeyResponse, error)
+	GetNameServerRecordList(contractId string) ([]string, error)
+}
+
+type OpenDNSConfig struct {
+	config          *edgegrid.Config
+}
+
 // AkamaiProvider implements the DNS provider for Akamai.
 type AkamaiRegistrar struct {
 	registrar.BaseRegistrarProvider
-	akamaiConfig *AkamaiConfig
-	config       *edgegrid.Config
+	akamaiConfig 	*AkamaiConfig
 	// Defines client. Allows for mocking.
-	client AkamaiDNSService
+	client 		AkamaiDNSService
+	dnsclient	OpenEdgegridDNSService
 }
 
 type AkamaiConfig struct {
@@ -70,13 +81,17 @@ func NewAkamaiRegistrar(ctx context.Context, akaConfig AkamaiConfig, akaService 
 	var err error
 
 	log := ctx.Value("appLog").(*log.Entry)
-	// Get file config and parse
-	if akaConfig.AkamaiConfigPath == "" {
-		return nil, fmt.Errorf("Akamai Registrar requires a configuration file")
-	}
-	akamaiConfig, err := loadConfig(log, akaConfig.AkamaiConfigPath)
-	if err != nil {
-		return nil, fmt.Errorf("Akamai Registrar. Invalid configuration file")
+	akamaiConfig := &akaConfig
+	// if mock, skip 
+	if akaService == nil {
+		// Get file config and parse
+		if akaConfig.AkamaiConfigPath == "" {
+			return nil, fmt.Errorf("Akamai Registrar requires a configuration file")
+		}
+		akamaiConfig, err = loadConfig(log, akaConfig.AkamaiConfigPath)
+		if err != nil {
+			return nil, fmt.Errorf("Akamai Registrar. Invalid configuration file")
+		}
 	}
 	// Process creds. Could be on cmd line, config file
 	var edgeGridConfig edgegrid.Config
@@ -133,8 +148,8 @@ func NewAkamaiRegistrar(ctx context.Context, akaConfig AkamaiConfig, akaService 
 	}
 
 	provider := &AkamaiRegistrar{
-		config:       &edgeGridConfig,
-		akamaiConfig: akamaiConfig,
+		dnsclient:	&OpenDNSConfig{config: &edgeGridConfig},
+		akamaiConfig: 	akamaiConfig,
 	}
 	if akaService != nil {
 		log.Debugf("Using STUB")
@@ -160,11 +175,6 @@ func (a *AkamaiRegistrar) GetDomains(ctx context.Context) ([]string, error) {
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetDomains")
 
-	// both edgedns and this registrar using dns. need to temp swap config...
-	existConfig := dns.Config
-	defer resetDNSConfig(existConfig)
-	dns.Config = *a.config
-
 	queryArgs := dns.ZoneListQueryArgs{
 		Types:       "PRIMARY",
 		SortBy:      "zone",
@@ -172,7 +182,7 @@ func (a *AkamaiRegistrar) GetDomains(ctx context.Context) ([]string, error) {
 		Search:      a.akamaiConfig.AkamaiNameFilter,
 	}
 	log.Debugf("ListZones Query Args: %v", queryArgs)
-	zlResp, err := dns.ListZones(queryArgs)
+	zlResp, err := a.dnsclient.ListZones(queryArgs)
 	if err != nil {
 		log.Debugf("Registrar GetDomains failed. Error: %s", err.Error())
 		return []string{}, err
@@ -180,7 +190,7 @@ func (a *AkamaiRegistrar) GetDomains(ctx context.Context) ([]string, error) {
 	filter := "LOCKED"
 	domains := make([]string, 0, len(zlResp.Zones))
 	for _, zone := range zlResp.Zones {
-		if strings.Contains(filter, zone.ActivationState) {
+		if filter == zone.ActivationState {
 			continue
 		}
 		domains = append(domains, zone.Zone)
@@ -195,12 +205,7 @@ func (a *AkamaiRegistrar) GetDomain(ctx context.Context, domain string) (*regist
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetDomain")
 
-	// both edgedns and this registrar using dns. need to temp swap config...
-	existConfig := dns.Config
-	defer resetDNSConfig(existConfig)
-	dns.Config = *a.config
-
-	zone, err := dns.GetZone(domain)
+	zone, err := a.dnsclient.GetZone(domain)
 	if err != nil {
 		return nil, err
 	}
@@ -220,12 +225,7 @@ func (a *AkamaiRegistrar) GetTsigKey(ctx context.Context, domain string) (tsigKe
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetTsigKey")
 
-	// both edgedns and this registrar using dns. need to temp swap config...
-	existConfig := dns.Config
-	defer resetDNSConfig(existConfig)
-	dns.Config = *a.config
-
-	resp, err := dns.GetZoneKey(domain)
+	resp, err := a.dnsclient.GetZoneKey(domain)
 
 	if err != nil {
 		return nil, err
@@ -240,14 +240,9 @@ func (a *AkamaiRegistrar) GetServeAlgorithm(ctx context.Context, domain string) 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetServeAlgorithm")
 
-	// both edgedns and this registrar using dns. need to temp swap config...
-	existConfig := dns.Config
-	defer resetDNSConfig(existConfig)
-	dns.Config = *a.config
-
-	zone, err := dns.GetZone(domain)
+	zone, err := a.dnsclient.GetZone(domain)
 	if err != nil {
-		return "", nil
+		return "", err 
 	}
 	log.Debugf("Returning Registrar GetServeAlgorithm result")
 	return zone.SignAndServeAlgorithm, nil
@@ -258,17 +253,12 @@ func (a *AkamaiRegistrar) GetMasterIPs(ctx context.Context) ([]string, error) {
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering Akamai registrar GetMasterIPs")
 
-	// both edgedns and this registrar using dns. need to temp swap config...
-	existConfig := dns.Config
-	defer resetDNSConfig(existConfig)
-	dns.Config = *a.config
-
 	if len(a.akamaiConfig.AkamaiContracts) < 1 {
 		log.Debug("Registrar GetMasterIPs failed. No contracts")
 		return []string{}, fmt.Errorf("No contracts provided")
 	}
 	contractId := strings.Split(a.akamaiConfig.AkamaiContracts, ",")[0]
-	masters, err := dns.GetNameServerRecordList(contractId)
+	masters, err := a.dnsclient.GetNameServerRecordList(contractId)
 	if err != nil {
 		log.Debugf("Registrar GetMasterIPs failed. Error: %s", err.Error())
 		return []string{}, err
@@ -278,6 +268,9 @@ func (a *AkamaiRegistrar) GetMasterIPs(ctx context.Context) ([]string, error) {
 	return masters, nil
 }
 
+//
+// Config file processing
+//
 func loadConfig(log *log.Entry, configFile string) (*AkamaiConfig, error) {
 
 	log.Debug("Entering Akamai registrar loadConfig")
@@ -314,3 +307,47 @@ func fileExists(filename string) bool {
 	}
 	return !info.IsDir()
 }
+
+//
+// Open DNS stubbable functions
+//
+func (o OpenDNSConfig) ListZones(queryArgs dns.ZoneListQueryArgs) (*dns.ZoneListResponse, error) {
+
+        // both edgedns and this registrar using dns. need to temp swap config...
+        existConfig := dns.Config
+        defer resetDNSConfig(existConfig)
+        dns.Config = *o.config
+
+	return dns.ListZones(queryArgs)
+}
+
+func (o OpenDNSConfig) GetZone(domain string) (*dns.ZoneResponse, error) {
+
+        // both edgedns and this registrar using dns. need to temp swap config...
+        existConfig := dns.Config
+        defer resetDNSConfig(existConfig)
+        dns.Config = *o.config
+
+        return dns.GetZone(domain)
+}
+
+func (o OpenDNSConfig) GetZoneKey(domain string) (*dns.TSIGKeyResponse, error) {
+
+        // both edgedns and this registrar using dns. need to temp swap config...
+        existConfig := dns.Config
+        defer resetDNSConfig(existConfig)
+        dns.Config = *o.config
+
+        return dns.GetZoneKey(domain)
+}
+
+func (o OpenDNSConfig) GetNameServerRecordList(contractId string) ([]string, error) {
+
+	// both edgedns and this registrar using dns. need to temp swap config...
+        existConfig := dns.Config
+        defer resetDNSConfig(existConfig)
+        dns.Config = *o.config
+
+        return dns.GetNameServerRecordList(contractId)
+}
+

@@ -52,7 +52,8 @@ type EdgeDNSHandler struct {
 	AccessToken   string
 	EdgercPath    string
 	EdgercSection string
-	config        *edgegrid.Config
+	FailOnError   bool
+	config        edgegrid.Config
 	// Defines client. Allows for mocking.
 	client AkamaiDNSService
 }
@@ -73,8 +74,7 @@ func InitEdgeDNSHandler(ctx context.Context, config *Config, akaService AkamaiDN
 		AccessToken:   config.EdgegridAccessToken,
 		EdgercPath:    config.EdgegridEdgercPath,
 		EdgercSection: config.EdgegridEdgercSection,
-		//Logger                  string
-		//LogLevel                string
+		FailOnError:   config.FailOnError,
 	}
 
 	// Process creds
@@ -124,7 +124,7 @@ func InitEdgeDNSHandler(ctx context.Context, config *Config, akaService AkamaiDN
 		}
 	}
 
-	edgeDNSHandler.config = &edgeGridConfig
+	edgeDNSHandler.config = edgeGridConfig
 
 	if akaService != nil {
 		log.Debugf("EdgeDNS Handler using STUB")
@@ -139,11 +139,23 @@ func InitEdgeDNSHandler(ctx context.Context, config *Config, akaService AkamaiDN
 	return edgeDNSHandler, nil
 }
 
+func (e *EdgeDNSHandler) restorePkgEdgeConfig(conf edgegrid.Config) {
+
+	e.config = conf
+
+	return
+}
+
 //
 func (e *EdgeDNSHandler) GetZoneNames(ctx context.Context, queryArgs dns.ZoneListQueryArgs, stateFilter []string) ([]string, error) {
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering EdgeDNS Handler GetZoneNames")
+
+	var edgegridConf = dns.Config
+	defer e.restorePkgEdgeConfig(edgegridConf)
+	dns.Config = e.config
+
 	// type shud be set to SECONDARY!
 	zlResp, err := e.GetZones(ctx, queryArgs)
 	if err != nil {
@@ -166,6 +178,11 @@ func (e *EdgeDNSHandler) GetZones(ctx context.Context, queryArgs dns.ZoneListQue
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering EdgeDNS Handler GetZones")
+
+	var edgegridConf = dns.Config
+	defer e.restorePkgEdgeConfig(edgegridConf)
+	dns.Config = e.config
+
 	log.Debugf("queryArgs: %v", queryArgs)
 	zoneresp, err := dns.ListZones(queryArgs)
 	if err == nil {
@@ -179,6 +196,11 @@ func (e *EdgeDNSHandler) GetZone(ctx context.Context, zone string) (*dns.ZoneRes
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering EdgeDNS Handler GetZone")
+
+	var edgegridConf = dns.Config
+	defer e.restorePkgEdgeConfig(edgegridConf)
+	dns.Config = e.config
+
 	zoneresp, err := dns.GetZone(zone)
 	if err == nil {
 		log.Debugf("GetZone result: %v", zoneresp)
@@ -190,6 +212,11 @@ func (e *EdgeDNSHandler) CreateZone(ctx context.Context, zone *dns.ZoneCreate, z
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering EdgeDNS Handler CreateZone")
+
+	var edgegridConf = dns.Config
+	defer e.restorePkgEdgeConfig(edgegridConf)
+	dns.Config = e.config
+
 	log.Debugf("Creating Zone: %v", zone)
 	return zone.Save(zonequerystring)
 
@@ -208,6 +235,11 @@ func (e *EdgeDNSHandler) CreateBulkZones(ctx context.Context, bulkzones *dns.Bul
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering EdgeDNS Handler CreateBulkZones")
+
+	var edgegridConf = dns.Config
+	defer e.restorePkgEdgeConfig(edgegridConf)
+	dns.Config = e.config
+
 	return dns.CreateBulkZones(bulkzones, zonequerystring)
 }
 
@@ -215,5 +247,10 @@ func (e *EdgeDNSHandler) DeleteBulkZones(ctx context.Context, zoneslist *dns.Zon
 
 	log := ctx.Value("appLog").(*log.Entry)
 	log.Debug("Entering EdgeDNS Handler DeleteBulkZones")
+
+	var edgegridConf = dns.Config
+	defer e.restorePkgEdgeConfig(edgegridConf)
+	dns.Config = e.config
+
 	return dns.DeleteBulkZones(zoneslist)
 }
