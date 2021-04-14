@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package plugin 
+package plugin
 
 import (
 	"context"
@@ -42,6 +42,7 @@ type PluginRegistrar struct {
 	pluginGetMasterIPs      func()
 	pluginGetTsigKey        func()
 	pluginGetServeAlgorithm func()
+	pluginTest              bool // flag for testing.
 }
 
 func lookupSymbols(plug *plugin.Plugin, reg *PluginRegistrar) error {
@@ -131,6 +132,11 @@ func NewPluginRegistrar(ctx context.Context, pluginConfig registrar.PluginConfig
 		return nil, err
 	}
 	pluginRegistrar.pluginArgs.PluginArg = pluginConfig
+	if !pluginRegistrar.pluginTest {
+		// clear ResultObj
+		pluginRegistrar.pluginResult.PluginError = nil
+		pluginRegistrar.pluginResult.PluginResult = nil
+	}
 	newPluginLibRegistrar.(func())()
 	if pluginRegistrar.pluginResult.PluginError != nil {
 		log.Errorf("Plugin library failed to initialize. Error: %s", pluginRegistrar.pluginResult.PluginError.Error())
@@ -150,6 +156,12 @@ func (r *PluginRegistrar) GetDomains(ctx context.Context) ([]string, error) {
 	// Synchronize library calls
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
+
+	if !r.pluginTest {
+		// clear ResultObj
+		r.pluginResult.PluginError = nil
+		r.pluginResult.PluginResult = nil
+	}
 
 	log.Debugf("Invoking %s library GetDomains", r.pluginConfig.PluginName)
 	r.pluginGetDomains()
@@ -179,8 +191,14 @@ func (r *PluginRegistrar) GetDomain(ctx context.Context, domain string) (*regist
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
+	if !r.pluginTest {
+		// clear ResultObj
+		r.pluginResult.PluginError = nil
+		r.pluginResult.PluginResult = nil
+		r.pluginArgs.PluginArg = domain
+	}
+
 	log.Debugf("Invoking %s library GetDomain", r.pluginConfig.PluginName)
-	r.pluginArgs.PluginArg = domain
 	r.pluginGetDomain()
 	if r.pluginResult.PluginError != nil {
 		return nil, r.pluginResult.PluginError
@@ -208,8 +226,14 @@ func (r *PluginRegistrar) GetTsigKey(ctx context.Context, domain string) (tsigKe
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
+	if !r.pluginTest {
+		// clear ResultObj
+		r.pluginResult.PluginError = nil
+		r.pluginResult.PluginResult = nil
+		r.pluginArgs.PluginArg = domain
+	}
+
 	log.Debugf("Invoking %s library GetTsigKey", r.pluginConfig.PluginName)
-	r.pluginArgs.PluginArg = domain
 	r.pluginGetTsigKey()
 	if r.pluginResult.PluginError != nil {
 		return nil, r.pluginResult.PluginError
@@ -235,8 +259,14 @@ func (r *PluginRegistrar) GetServeAlgorithm(ctx context.Context, domain string) 
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
+	if !r.pluginTest {
+		// clear ResultObj
+		r.pluginResult.PluginError = nil
+		r.pluginResult.PluginResult = nil
+		r.pluginArgs.PluginArg = domain
+	}
+
 	log.Debugf("Invoking %s library GetServeAlgorithm", r.pluginConfig.PluginName)
-	r.pluginArgs.PluginArg = domain
 	r.pluginGetServeAlgorithm()
 	if r.pluginResult.PluginError != nil {
 		return "", r.pluginResult.PluginError
@@ -256,10 +286,16 @@ func (r *PluginRegistrar) GetMasterIPs(ctx context.Context) ([]string, error) {
 	var masters = []string{}
 
 	log := ctx.Value("appLog").(*log.Entry)
-	log.Debug("Entering Akamai registrar GetMasterIPs")
+	log.Debug("Entering Plugin registrar GetMasterIPs")
 	// Synchronize library calls
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
+
+	if !r.pluginTest {
+		// clear ResultObj
+		r.pluginResult.PluginError = nil
+		r.pluginResult.PluginResult = nil
+	}
 
 	log.Debugf("Invoking %s library GetMasterIPs", r.pluginConfig.PluginName)
 	r.pluginGetMasterIPs()
