@@ -18,6 +18,7 @@ import (
 	"github.com/akamai/edgedns-registrar-coordinator/registrar"
 	akamai "github.com/akamai/edgedns-registrar-coordinator/registrar/akamai"
 	plugin "github.com/akamai/edgedns-registrar-coordinator/registrar/plugin"
+	markmonitorsftp "github.com/akamai/edgedns-registrar-coordinator/registrar/markmonitorsftp"
 	log "github.com/apex/log"
 	"github.com/apex/log/handlers/cli"
 	"github.com/apex/log/handlers/discard"
@@ -169,6 +170,15 @@ func main() {
 				LogEntry:         appLog,
 			},
 		)
+
+	case "markmonitorsftp":
+		r, err = markmonitorsftp.NewMarkMonitorSFTPRegistrar(
+                        ctx,
+                        markmonitorsftp.MarkMonitorSFTPConfig{
+                                MarkMonitorSFTPConfigPath: cfg.RegistrarConfigPath,
+                        },
+                        nil,
+                )
 
 	default:
 		err = fmt.Errorf("Invalid command")
