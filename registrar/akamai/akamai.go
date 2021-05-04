@@ -23,6 +23,7 @@ import (
 	edgegrid "github.com/akamai/AkamaiOPEN-edgegrid-golang/edgegrid"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -49,16 +50,16 @@ type OpenEdgegridDNSService interface {
 }
 
 type OpenDNSConfig struct {
-	config          *edgegrid.Config
+	config *edgegrid.Config
 }
 
 // AkamaiProvider implements the DNS provider for Akamai.
 type AkamaiRegistrar struct {
 	registrar.BaseRegistrarProvider
-	akamaiConfig 	*AkamaiConfig
+	akamaiConfig *AkamaiConfig
 	// Defines client. Allows for mocking.
-	client 		AkamaiDNSService
-	dnsclient	OpenEdgegridDNSService
+	client    AkamaiDNSService
+	dnsclient OpenEdgegridDNSService
 }
 
 type AkamaiConfig struct {
@@ -82,7 +83,7 @@ func NewAkamaiRegistrar(ctx context.Context, akaConfig AkamaiConfig, akaService 
 
 	log := ctx.Value("appLog").(*log.Entry)
 	akamaiConfig := &akaConfig
-	// if mock, skip 
+	// if mock, skip
 	if akaService == nil {
 		// Get file config and parse
 		if akaConfig.AkamaiConfigPath == "" {
@@ -148,8 +149,8 @@ func NewAkamaiRegistrar(ctx context.Context, akaConfig AkamaiConfig, akaService 
 	}
 
 	provider := &AkamaiRegistrar{
-		dnsclient:	&OpenDNSConfig{config: &edgeGridConfig},
-		akamaiConfig: 	akamaiConfig,
+		dnsclient:    &OpenDNSConfig{config: &edgeGridConfig},
+		akamaiConfig: akamaiConfig,
 	}
 	if akaService != nil {
 		log.Debugf("Using STUB")
@@ -242,7 +243,7 @@ func (a *AkamaiRegistrar) GetServeAlgorithm(ctx context.Context, domain string) 
 
 	zone, err := a.dnsclient.GetZone(domain)
 	if err != nil {
-		return "", err 
+		return "", err
 	}
 	log.Debugf("Returning Registrar GetServeAlgorithm result")
 	return zone.SignAndServeAlgorithm, nil
@@ -258,12 +259,27 @@ func (a *AkamaiRegistrar) GetMasterIPs(ctx context.Context) ([]string, error) {
 		return []string{}, fmt.Errorf("No contracts provided")
 	}
 	contractId := strings.Split(a.akamaiConfig.AkamaiContracts, ",")[0]
-	masters, err := a.dnsclient.GetNameServerRecordList(contractId)
+	ns, err := a.dnsclient.GetNameServerRecordList(contractId)
 	if err != nil {
 		log.Debugf("Registrar GetMasterIPs failed. Error: %s", err.Error())
 		return []string{}, err
 	}
-
+	log.Debugf("Retrieved IPs: %v", ns)
+	masters := []string{}
+	// Lookup IP4 address for each name server
+	for _, entry := range ns {
+		ips, err := net.LookupHost(entry)
+		if err != nil {
+			log.Warnf("Master Hostname %s lookup failed. %s", entry, err.Error())
+			continue
+		}
+		for _, ip := range ips {
+			if strings.Contains(ip, ".") {
+				masters = append(masters, ip)
+				break
+			}
+		}
+	}
 	log.Debugf("Registrar GetMasterIPs result: %v", masters)
 	return masters, nil
 }
@@ -313,41 +329,40 @@ func fileExists(filename string) bool {
 //
 func (o OpenDNSConfig) ListZones(queryArgs dns.ZoneListQueryArgs) (*dns.ZoneListResponse, error) {
 
-        // both edgedns and this registrar using dns. need to temp swap config...
-        existConfig := dns.Config
-        defer resetDNSConfig(existConfig)
-        dns.Config = *o.config
+	// both edgedns and this registrar using dns. need to temp swap config...
+	existConfig := dns.Config
+	defer resetDNSConfig(existConfig)
+	dns.Config = *o.config
 
 	return dns.ListZones(queryArgs)
 }
 
 func (o OpenDNSConfig) GetZone(domain string) (*dns.ZoneResponse, error) {
 
-        // both edgedns and this registrar using dns. need to temp swap config...
-        existConfig := dns.Config
-        defer resetDNSConfig(existConfig)
-        dns.Config = *o.config
+	// both edgedns and this registrar using dns. need to temp swap config...
+	existConfig := dns.Config
+	defer resetDNSConfig(existConfig)
+	dns.Config = *o.config
 
-        return dns.GetZone(domain)
+	return dns.GetZone(domain)
 }
 
 func (o OpenDNSConfig) GetZoneKey(domain string) (*dns.TSIGKeyResponse, error) {
 
-        // both edgedns and this registrar using dns. need to temp swap config...
-        existConfig := dns.Config
-        defer resetDNSConfig(existConfig)
-        dns.Config = *o.config
+	// both edgedns and this registrar using dns. need to temp swap config...
+	existConfig := dns.Config
+	defer resetDNSConfig(existConfig)
+	dns.Config = *o.config
 
-        return dns.GetZoneKey(domain)
+	return dns.GetZoneKey(domain)
 }
 
 func (o OpenDNSConfig) GetNameServerRecordList(contractId string) ([]string, error) {
 
 	// both edgedns and this registrar using dns. need to temp swap config...
-        existConfig := dns.Config
-        defer resetDNSConfig(existConfig)
-        dns.Config = *o.config
+	existConfig := dns.Config
+	defer resetDNSConfig(existConfig)
+	dns.Config = *o.config
 
-        return dns.GetNameServerRecordList(contractId)
+	return dns.GetNameServerRecordList(contractId)
 }
-

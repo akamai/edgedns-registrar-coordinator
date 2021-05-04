@@ -1,10 +1,10 @@
 # Mark Monitor SFTP Example COnfiguration
 #
-markmonitor_ssh_user: test
+markmonitor_ssh_user: demo
 
-markmonitor_ssh_password: test
+markmonitor_ssh_password: password
 
-markmonitor_ssh_host: sftp_test_host
+markmonitor_ssh_host: test.rebex.net
 
 markmonitor_ssh_port: 22
 
@@ -18,7 +18,7 @@ markmonitor_master_ips:
   - 1.2.3.4
   - 5.6.7.8 
 
-markmonitor_registrar_domain_filepath: testdomainconfig
+markmonitor_registrar_domain_filepath: readme.txt 
 
 markmonitor_temp_file_folder: /tmp
 

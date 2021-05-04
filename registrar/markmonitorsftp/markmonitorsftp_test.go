@@ -110,6 +110,61 @@ func TestParseZoneDataFail(t *testing.T) {
 	assert.Equal(t, z, "")
 }
 
+func TestRegistrarEstablishSFTPSessionLive(t *testing.T) {
+
+	ctx := context.TODO()
+	logLevel, _ := log.ParseLevel("info")
+	log.SetLevel(logLevel)
+
+	appLog := log.WithFields(log.Fields{
+		"registrar": "Test MarkMonitorSFTP",
+		"test case": "TestRegistrarSftpConnection",
+	})
+	ctx = context.WithValue(ctx, "appLog", appLog)
+
+	config := initRegistrarStub(ctx)
+	config.MarkMonitorSFTPConfigPath = "./livetest.yaml"
+
+	testRegistrar, err := NewMarkMonitorSFTPRegistrar(ctx, config, nil)
+	if err != nil {
+		fmt.Println("err: ", err.Error())
+	}
+	defer testRegistrar.closeSFTPSession(testRegistrar.sftpService)
+	err = testRegistrar.sftpService.EstablishSFTPSession(appLog, testRegistrar.markmonitorConfig)
+	assert.Nil(t, err)
+}
+
+func TestRegistrarGetDomainsLive(t *testing.T) {
+
+	ctx := context.TODO()
+	logLevel, _ := log.ParseLevel("info")
+	log.SetLevel(logLevel)
+
+	appLog := log.WithFields(log.Fields{
+		"registrar": "Test MarkMonitorSFTP",
+		"test case": "GetDomains",
+	})
+	ctx = context.WithValue(ctx, "appLog", appLog)
+
+	config := initRegistrarStub(ctx)
+	config.MarkMonitorSshUser = "demo"
+	config.MarkMonitorSshPassword = "password"
+	config.MarkMonitorSshHost = "test.rebex.net"
+	config.MarkMonitorSshPort = 22
+	config.MarkMonitorDomainConfigFilePath = "readme.txt"
+	config.MarkMonitorSFTPConfigPath = "./livetest.yaml"
+
+	testRegistrar, err := NewMarkMonitorSFTPRegistrar(ctx, config, nil)
+	if err != nil {
+		fmt.Println("err: ", err.Error())
+	}
+	defer testRegistrar.closeSFTPSession(testRegistrar.sftpService)
+	doms, err := testRegistrar.GetDomains(ctx)
+	assert.Nil(t, err)
+	// readme has n zone lines ...
+	assert.Equal(t, len(doms), 0)
+}
+
 func TestRegistrarGetDomains(t *testing.T) {
 
 	ctx := context.TODO()

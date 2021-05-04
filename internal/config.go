@@ -89,8 +89,6 @@ func NewApp() *kingpin.Application {
 // ParseFlags adds and parses flags from command line
 func (cfg *Config) ParseFlags(app *kingpin.Application, args []string) (string, error) {
 
-	fmt.Println("ParseFlags Command Args: ", args)
-	//app.Version(Version)
 	app.DefaultEnvars() // ParseFlags adds and parses flags from command line
 	app.Flag("registrar", "registrar").Required().StringVar(&cfg.Registrar)
 	app.Flag("registrar-config-path", "registrar configuration filepath").StringVar(&cfg.RegistrarConfigPath)
