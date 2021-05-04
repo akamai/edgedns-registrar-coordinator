@@ -110,6 +110,62 @@ func TestParseZoneDataFail(t *testing.T) {
 	assert.Equal(t, z, "")
 }
 
+// Uncomment as basis for live testing
+/*
+func TestRegistrarSftpConnection(t *testing.T) {
+
+        ctx := context.TODO()
+        logLevel, _ := log.ParseLevel("info")
+        log.SetLevel(logLevel)
+
+        appLog := log.WithFields(log.Fields{
+                "registrar": "Test MarkMonitorSFTP",
+                "test case": "TestRegistrarSftpConnection",
+        })
+        ctx = context.WithValue(ctx, "appLog", appLog)
+
+        config := initRegistrarStub(ctx)
+	config.MarkMonitorSFTPConfigPath = "/home/github.com/akamai/edgedns-registrar-coordinator/markmonitor-sftp-registrar-config-example.yaml"
+
+        testRegistrar, err := NewMarkMonitorSFTPRegistrar(ctx, config, nil)
+        if err != nil {
+                fmt.Println("err: ", err.Error())
+        }
+        defer testRegistrar.closeSFTPSession(testRegistrar.sftpService)
+        err = testRegistrar.sftpService.EstablishSFTPSession(appLog, testRegistrar.markmonitorConfig)
+        assert.Nil(t, err)
+}
+
+func TestRegistrarGetDomainsReal(t *testing.T) {
+
+        ctx := context.TODO()
+        logLevel, _ := log.ParseLevel("info")
+        log.SetLevel(logLevel)
+
+        appLog := log.WithFields(log.Fields{
+                "registrar": "Test MarkMonitorSFTP",
+                "test case": "GetDomains",
+        })
+        ctx = context.WithValue(ctx, "appLog", appLog)
+
+        config := initRegistrarStub(ctx)
+        config.MarkMonitorSshUser = "demo"
+        config.MarkMonitorSshPassword = "password"
+        config.MarkMonitorSshHost = "test.rebex.net"
+        config.MarkMonitorSshPort = 22
+        config.MarkMonitorDomainConfigFilePath = "readme.txt"
+        config.MarkMonitorSFTPConfigPath = "/home/github.com/akamai/edgedns-registrar-coordinator/markmonitor-sftp-registrar-config-example.yaml"
+
+        testRegistrar, err := NewMarkMonitorSFTPRegistrar(ctx, config, nil)
+        if err != nil {
+                fmt.Println("err: ", err.Error())
+        }
+        defer testRegistrar.closeSFTPSession(testRegistrar.sftpService)
+        _, err = testRegistrar.GetDomains(ctx)
+        assert.Nil(t, err)
+}
+*/
+
 func TestRegistrarGetDomains(t *testing.T) {
 
 	ctx := context.TODO()

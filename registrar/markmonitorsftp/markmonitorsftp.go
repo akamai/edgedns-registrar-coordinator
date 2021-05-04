@@ -20,6 +20,7 @@ import (
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 
 	"bufio"
 	"context"
@@ -96,9 +97,10 @@ type MarkMonitorSFTPConfig struct {
 // Create and return ssl Connection
 func initSSHClient(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig) (*ssh.Client, error) {
 
-	// try getting host public key
-	hostKey, err := getHostKey(markmonitorConfig.MarkMonitorSshHost)
+	// use known_hosts in the users home directory
+	hostKeyCallback, err := knownhosts.New(filepath.Join(os.Getenv("HOME"), ".ssh", "known_hosts"))
 	if err != nil {
+		log.Errorf("could not create hostkeycallback function: %s", err.Error())
 		return nil, err
 	}
 	config := &ssh.ClientConfig{
@@ -106,8 +108,7 @@ func initSSHClient(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig) (*s
 		Auth: []ssh.AuthMethod{
 			ssh.Password(markmonitorConfig.MarkMonitorSshPassword),
 		},
-		// HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		HostKeyCallback: ssh.FixedHostKey(hostKey),
+		HostKeyCallback: hostKeyCallback,
 	}
 	if markmonitorConfig.MarkMonitorSslCertAlgorithm != "" {
 		config.HostKeyAlgorithms = append(config.HostKeyAlgorithms, markmonitorConfig.MarkMonitorSslCertAlgorithm)
@@ -120,7 +121,6 @@ func initSSHClient(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig) (*s
 		return nil, err
 	}
 
-	//defer conn.Close()
 	return client, nil
 }
 
@@ -143,44 +143,9 @@ func initSFTPClient(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig, ss
 
 }
 
-// Get host key from local known hosts
-func getHostKey(host string) (ssh.PublicKey, error) {
-	// parse OpenSSH known_hosts file
-	// ssh or use ssh-keyscan to get initial key
-	var hostKey ssh.PublicKey
-	file, err := os.Open(filepath.Join(os.Getenv("HOME"), ".ssh", "known_hosts"))
-	if err != nil {
-		return hostKey, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		fields := strings.Split(scanner.Text(), " ")
-		if len(fields) != 3 {
-			continue
-		}
-		if strings.Contains(fields[0], host) {
-			var err error
-			hostKey, _, _, _, err = ssh.ParseAuthorizedKey(scanner.Bytes())
-			if err != nil {
-				return hostKey, err
-			}
-			break
-		}
-	}
-
-	if hostKey == nil {
-		log.Warnf("No hostkey found for %s", host)
-		return hostKey, fmt.Errorf("No hostkey found for %s", host)
-	}
-
-	return hostKey, nil
-}
-
 func closeSFTPSession(config interface{}) {
 
-	sftpDNSConfig := config.(SFTPDNSConfig)
+	sftpDNSConfig := config.(*SFTPDNSConfig)
 	// close active connectios
 	if sftpDNSConfig.sftpClient != nil {
 		sftpDNSConfig.sftpClient.Close()
@@ -244,8 +209,8 @@ func NewMarkMonitorSFTPRegistrar(ctx context.Context, mmConfig MarkMonitorSFTPCo
 		provider.sftpService = sftpService
 	} else {
 		err := provider.sftpService.EstablishSFTPSession(log, markmonitorConfig)
+		defer closeSFTPSession(provider.sftpService)
 		if err != nil {
-			closeSFTPSession(provider.sftpService.(SFTPDNSConfig))
 			log.Errorf("MarkMonitor Registrar. Failed to initialize SFTP Client. %s", err.Error())
 			return nil, fmt.Errorf("MarkMonitor Registrar. Failed to initialize SFTP Client.")
 		}
@@ -304,6 +269,7 @@ func (mm *MarkMonitorSFTPRegistrar) GetDomains(ctx context.Context) ([]string, e
 	}
 
 	log.Debugf("Registrar GetDomains result: %v", domains)
+
 	return *domains, nil
 }
 
@@ -424,13 +390,8 @@ func fileExists(filename string) bool {
 //
 
 // establish SFTPSession if not already
-func (s SFTPDNSConfig) EstablishSFTPSession(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig) error {
+func (s *SFTPDNSConfig) EstablishSFTPSession(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig) error {
 
-	/*
-	   TODO: If either client exists, check for valid open connection?
-	*/
-
-	sshClient := s.sshClient
 	if s.sshClient == nil {
 		sshClient, err := initSSHClient(log, markmonitorConfig)
 		if err != nil {
@@ -440,7 +401,7 @@ func (s SFTPDNSConfig) EstablishSFTPSession(log *log.Entry, markmonitorConfig *M
 		s.sshClient = sshClient
 	}
 	if s.sftpClient == nil {
-		sftpClient, err := initSFTPClient(log, markmonitorConfig, sshClient)
+		sftpClient, err := initSFTPClient(log, markmonitorConfig, s.sshClient)
 		if err != nil {
 			log.Errorf("MarkMonitor Registrar. Failed to initialize SFTP Client. %s", err.Error())
 			return fmt.Errorf("MarkMonitor Registrar. Failed to initialize SFTP Client.")
@@ -453,8 +414,6 @@ func (s SFTPDNSConfig) EstablishSFTPSession(log *log.Entry, markmonitorConfig *M
 
 func ParseZoneData(log *log.Entry, zoneLine string) string {
 
-	fmt.Println("zoneLine: ", zoneLine)
-
 	log.Debugf("Domains line: [%s]", zoneLine)
 	if !strings.HasPrefix(zoneLine, "zone") {
 		return ""
@@ -464,23 +423,18 @@ func ParseZoneData(log *log.Entry, zoneLine string) string {
 		return ""
 	}
 	dline := strings.SplitN(zoneLine, " ", 4)
-
-	fmt.Println("dline: ", dline)
-
 	if len(dline) < 4 {
 		log.Warnf("Incomplete zone line: %s", zoneLine)
 		return ""
 	}
 	zoneText := strings.Split(dline[1], "\"")
 
-	fmt.Println("zoneText: ", zoneText)
-
 	return zoneText[1]
 
 }
 
 // ParseDomainFile parses reteieved domains file. Returns map of domains indexed by masterp ip and error
-func (s SFTPDNSConfig) ParseDomainFile(log *log.Entry, domFile *os.File) (*[]string, error) {
+func (s *SFTPDNSConfig) ParseDomainFile(log *log.Entry, domFile *os.File) (*[]string, error) {
 
 	log.Debugf("Entering ParseDomainFile")
 	// File line example (excluding preamble and postables):
@@ -489,6 +443,10 @@ func (s SFTPDNSConfig) ParseDomainFile(log *log.Entry, domFile *os.File) (*[]str
 	defer closeAndRemoveDomainsFile(log, domFile)
 
 	domNames := []string{}
+	// start from beginning of the file
+	if _, err := domFile.Seek(0, 0); err != nil {
+		return &domNames, err
+	}
 	scanner := bufio.NewScanner(domFile)
 	for scanner.Scan() {
 		zoneLine := strings.TrimSpace(scanner.Text())
@@ -497,16 +455,6 @@ func (s SFTPDNSConfig) ParseDomainFile(log *log.Entry, domFile *os.File) (*[]str
 			log.Debugf("Adding %s to domain list", zone)
 			domNames = append(domNames, zone)
 		}
-		/*
-			zmeta := strings.Split(dline[1], "masters")	// masters { 64.124.14.39; };
-			rmaster := string.TrimSpace(zmeta[1])
-			if strings.HasPrefix(rmaster, "{") {
-				rmaster = rmaster[1:]
-			}
-			mlist := strings.Split(rmaster, "}")
-			masters := strings.Split(mlist, ";")
-		*/
-
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -519,7 +467,7 @@ func (s SFTPDNSConfig) ParseDomainFile(log *log.Entry, domFile *os.File) (*[]str
 }
 
 // ReadRemoteDomainFile reads remote dmains file, saves to remp location. returns handle of temp file and error.
-func (s SFTPDNSConfig) ReadRemoteDomainFile(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig) (*[]string, error) {
+func (s *SFTPDNSConfig) ReadRemoteDomainFile(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig) (*[]string, error) {
 
 	log.Debugf("Entering ReadRemoteDomainFile")
 
@@ -528,8 +476,9 @@ func (s SFTPDNSConfig) ReadRemoteDomainFile(log *log.Entry, markmonitorConfig *M
 		log.Errorf("ReadRemoteDomainFile: Failed to stat remote domains file. %s", err.Error())
 		return nil, err
 	}
+
 	modTime := fstat.ModTime()
-	if modTime.After(s.lastDomFileUpdate.Add(s.domFileTTL)) {
+	if modTime.After(s.lastDomFileUpdate.Add(s.domFileTTL)) && s.domainMasterList != nil {
 		return s.domainMasterList, nil
 	}
 
@@ -547,7 +496,6 @@ func (s SFTPDNSConfig) ReadRemoteDomainFile(log *log.Entry, markmonitorConfig *M
 		log.Errorf("ReadRemoteDomainFile: Failed to create temp domains file. %s", err.Error())
 		return nil, err
 	}
-
 	// copy domains file to temp file
 	_, err = io.Copy(tempFile, domsFile)
 	if err != nil {
