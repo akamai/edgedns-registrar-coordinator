@@ -4,11 +4,9 @@ markmonitor_ssh_user: test
 
 markmonitor_ssh_password: test
 
-markmonitor_ssh_host: http://localhost
+markmonitor_ssh_host: sftp_test_host
 
-markmonitor_ssh_port: 9090
-
-markmonitor_ssl_hostkey: abcdefg1234567890
+markmonitor_ssh_port: 22
 
 # markmonitor_ssl_cert_algorithm:
 
@@ -20,7 +18,7 @@ markmonitor_dns_master_ips:
   - 1.2.3.4
   - 5.6.7.8 
 
-markmonitor_registrar_domain_filepath: ./domainconfig
+markmonitor_registrar_domain_filepath: testdomainconfig
 
 markmonitor_temp_file_folder: /tmp
 
