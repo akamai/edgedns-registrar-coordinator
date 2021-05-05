@@ -145,7 +145,10 @@ func initSFTPClient(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig, ss
 
 func closeSFTPSession(config interface{}) {
 
-	sftpDNSConfig := config.(*SFTPDNSConfig)
+	sftpDNSConfig, ok := config.(*SFTPDNSConfig)
+	if !ok {
+		return
+	}
 	// close active connectios
 	if sftpDNSConfig.sftpClient != nil {
 		sftpDNSConfig.sftpClient.Close()
@@ -209,11 +212,12 @@ func NewMarkMonitorSFTPRegistrar(ctx context.Context, mmConfig MarkMonitorSFTPCo
 		provider.sftpService = sftpService
 	} else {
 		err := provider.sftpService.EstablishSFTPSession(log, markmonitorConfig)
-		defer closeSFTPSession(provider.sftpService)
 		if err != nil {
+			closeSFTPSession(provider.sftpService)
 			log.Errorf("MarkMonitor Registrar. Failed to initialize SFTP Client. %s", err.Error())
 			return nil, fmt.Errorf("MarkMonitor Registrar. Failed to initialize SFTP Client.")
 		}
+		defer closeSFTPSession(provider.sftpService)
 		dur, err := time.ParseDuration(markmonitorConfig.MarkMonitorDomFileTTL)
 		if provider.markmonitorConfig.MarkMonitorDomFileTTL != "" && err == nil {
 			provider.sftpService.(*SFTPDNSConfig).domFileTTL = dur
@@ -392,6 +396,8 @@ func fileExists(filename string) bool {
 // establish SFTPSession if not already
 func (s *SFTPDNSConfig) EstablishSFTPSession(log *log.Entry, markmonitorConfig *MarkMonitorSFTPConfig) error {
 
+	log.Debugf("EstablishSFTPSession")
+
 	if s.sshClient == nil {
 		sshClient, err := initSSHClient(log, markmonitorConfig)
 		if err != nil {
@@ -399,6 +405,7 @@ func (s *SFTPDNSConfig) EstablishSFTPSession(log *log.Entry, markmonitorConfig *
 			return fmt.Errorf("MarkMonitor Registrar. Failed to initialize SSH Client.")
 		}
 		s.sshClient = sshClient
+		log.Debugf("SSH Session created: [%v]", *s.sshClient)
 	}
 	if s.sftpClient == nil {
 		sftpClient, err := initSFTPClient(log, markmonitorConfig, s.sshClient)
@@ -407,6 +414,7 @@ func (s *SFTPDNSConfig) EstablishSFTPSession(log *log.Entry, markmonitorConfig *
 			return fmt.Errorf("MarkMonitor Registrar. Failed to initialize SFTP Client.")
 		}
 		s.sftpClient = sftpClient
+		log.Debugf("SSH Session created: [%v]", *s.sftpClient)
 	}
 
 	return nil

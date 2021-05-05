@@ -17,8 +17,8 @@ import (
 	"github.com/akamai/edgedns-registrar-coordinator/internal"
 	"github.com/akamai/edgedns-registrar-coordinator/registrar"
 	akamai "github.com/akamai/edgedns-registrar-coordinator/registrar/akamai"
-	plugin "github.com/akamai/edgedns-registrar-coordinator/registrar/plugin"
 	markmonitorsftp "github.com/akamai/edgedns-registrar-coordinator/registrar/markmonitorsftp"
+	plugin "github.com/akamai/edgedns-registrar-coordinator/registrar/plugin"
 	log "github.com/apex/log"
 	"github.com/apex/log/handlers/cli"
 	"github.com/apex/log/handlers/discard"
@@ -79,16 +79,19 @@ func main() {
 	monitor = app.Command("monitor", "Monitor registrar for domain adds and deletes.")
 	if len(os.Args) < 2 {
 		app.FatalUsage("/nError: sub command is required/n")
+		os.Exit(1)
 	}
 	cmd, err := cfg.ParseFlags(app, os.Args[1:])
 	if err != nil {
 		fmt.Println("flag parsing error: ", err.Error())
 		app.FatalUsage("command line parsing error: %v", err.Error())
+		os.Exit(1)
 	}
 	err = cfg.Validate()
 	if err != nil {
 		fmt.Println("validation error: ", err.Error())
 		app.FatalUsage("command line validation error: %v", err.Error())
+		os.Exit(1)
 	}
 
 	// Setup logging
@@ -120,14 +123,14 @@ func main() {
 		log.SetHandler(discard.Default)
 
 	/*
-		case "syslog":
-	                levelMap := map[string]string{
-	                        "debug": ,
-				"info": ,
-				"warning": ,
-				"error": ,
-				"fatal": ,
-	                }
+			case "syslog":
+		                levelMap := map[string]string{
+		                        "debug": ,
+					"info": ,
+					"warning": ,
+					"error": ,
+					"fatal": ,
+		                }
 	*/
 
 	default:
@@ -139,6 +142,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("sub command parse error: %v", err)
 		app.FatalUsage("command line validation error: %v", err.Error())
+		os.Exit(1)
 	}
 
 	appLog := log.WithFields(log.Fields{
@@ -173,12 +177,12 @@ func main() {
 
 	case "markmonitorsftp":
 		r, err = markmonitorsftp.NewMarkMonitorSFTPRegistrar(
-                        ctx,
-                        markmonitorsftp.MarkMonitorSFTPConfig{
-                                MarkMonitorSFTPConfigPath: cfg.RegistrarConfigPath,
-                        },
-                        nil,
-                )
+			ctx,
+			markmonitorsftp.MarkMonitorSFTPConfig{
+				MarkMonitorSFTPConfigPath: cfg.RegistrarConfigPath,
+			},
+			nil,
+		)
 
 	default:
 		err = fmt.Errorf("Invalid command")
@@ -186,6 +190,7 @@ func main() {
 	if err != nil {
 		appLog.Errorf("Failed to create registrar. Error: %s", err.Error())
 		app.Fatalf("Failed to create registrar. Error: %s", err.Error())
+		os.Exit(1)
 	}
 
 	app.Version((VERSION))
@@ -196,6 +201,7 @@ func main() {
 	if err != nil {
 		appLog.Errorf("Failed to initialize Edge DNS Handler. Error: %s", err.Error())
 		app.Fatalf("Failed to initialize Edge DNS Handler. Error: %s", err.Error())
+		os.Exit(1)
 	}
 
 	switch cmd {
@@ -206,6 +212,7 @@ func main() {
 	default:
 		appLog.Errorf("Invalid commandline [%s]", strings.Join(os.Args, " "))
 		app.FatalUsage("Invalid commandline [%s]", strings.Join(os.Args, " "))
+		os.Exit(1)
 	}
 	errmsg := <-cmderr
 	if errmsg != "" {
@@ -215,6 +222,7 @@ func main() {
 		} else {
 			appLog.Errorf("Command action terminated. %s", errmsg)
 			app.Fatalf("Command action terminated. %s", errmsg)
+			os.Exit(1)
 		}
 	}
 }
