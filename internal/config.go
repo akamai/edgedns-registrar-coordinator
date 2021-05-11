@@ -94,13 +94,13 @@ func (cfg *Config) ParseFlags(app *kingpin.Application, args []string) (string, 
 	app.Flag("registrar-config-path", "registrar configuration filepath").StringVar(&cfg.RegistrarConfigPath)
 	app.Flag("interval", "registrar coordination interval in duration format (default: 15m)").Default(DefaultConfig.Interval.String()).DurationVar(&cfg.Interval)
 	app.Flag("fail-on-error", "Fail and exit on error during sub command processing").BoolVar(&cfg.FailOnError)
-	app.Flag("dnssec", "Enables DNSSEC Serve(default: disabled").BoolVar(&cfg.DNSSEC)
-	app.Flag("tsig", "Enables TSIG Key processing (default: disabled").BoolVar(&cfg.TSig)
+	app.Flag("dnssec", "Enables DNSSEC Serve(default: disabled)").BoolVar(&cfg.DNSSEC)
+	app.Flag("tsig", "Enables TSIG Key processing (default: disabled)").BoolVar(&cfg.TSig)
 	app.Flag("once", "When enabled, exits the synchronization loop after the first iteration (default: disabled)").BoolVar(&cfg.Once)
 	app.Flag("dry-run", "When enabled, prints DNS record changes rather than actually performing them (default: disabled)").BoolVar(&cfg.DryRun)
-	app.Flag("log-file-path", "The log file path. Default destination is stderr ").Default(DefaultConfig.LogFilePath).StringVar(&cfg.LogFilePath)
+	app.Flag("log-file-path", "The log file path. Default destination is stderr").Default(DefaultConfig.LogFilePath).StringVar(&cfg.LogFilePath)
 	app.Flag("log-handler", "The handler used to log messages (default: text. options: text, json, cli, discard)").Default(DefaultConfig.LogHandler).EnumVar(&cfg.LogHandler, "text", "json", "cli", "discard", "syslog")
-	app.Flag("log-level", "Set the level of logging. (default: info, options: debug, info, warning, error, fatal").Default(DefaultConfig.LogLevel).EnumVar(&cfg.LogLevel, "debug", "info", "warning", "error", "fatal")
+	app.Flag("log-level", "Set the level of logging. (default: info, options: debug, info, warning, error, fatal)").Default(DefaultConfig.LogLevel).EnumVar(&cfg.LogLevel, "debug", "info", "warning", "error", "fatal")
 
 	// Edge DNS
 	app.Flag("edgedns-contract", "Contract to use creating a domain.").Default(DefaultConfig.EdgeDNSContract).StringVar(&cfg.EdgeDNSContract)
